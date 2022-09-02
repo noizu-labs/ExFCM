@@ -26,7 +26,7 @@ defmodule ExFCM.Message do
   @server_key Application.get_env(:exfcm, :server_key, "")
 
   defmodule Notification do
-    defstruct title: nil, body: nil
+    defstruct title: nil, body: nil, sound: nil
   end
 
   @doc """
@@ -35,6 +35,15 @@ defmodule ExFCM.Message do
 
   def put_notification(message \\ %__MODULE__{}, title, data) do
     notification = %Notification{ title: title, body: data}
+    %__MODULE__{message | notification: notification}
+  end
+
+  @doc """
+  Puts a Audible Notification inside message. It will be displayed in tray when app is in background.
+  """
+
+  def put_audible_notification(message \\ %__MODULE__{}, title, data, sound) do
+    notification = %Notification{ title: title, body: data, sound: sound}
     %__MODULE__{message | notification: notification}
   end
 
