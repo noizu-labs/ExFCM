@@ -3,7 +3,7 @@ defmodule ExFCM.Mixfile do
 
   def project do
     [app: :exfcm,
-     version: "0.1.1",
+     version: "0.2.0",
      elixir: "~> 1.3",
      build_embedded: Mix.env == :prod,
      start_permanent: Mix.env == :prod,
@@ -16,13 +16,17 @@ defmodule ExFCM.Mixfile do
   #
   # Type "mix help compile.app" for more information
   def application do
-    [applications: [:logger, :httpoison]]
+    [
+      applications: [:logger, :httpoison],
+      extra_applications: [:poison,:goth],
+     ]
   end
 
   defp deps do
     [
       {:httpoison, "~> 0.9.0"},
       {:poison, ">= 0.0.0"},
+      {:goth, "~> 1.4"},
       {:ex_doc, ">= 0.0.0", only: :dev} 
     ]
   end

@@ -23,6 +23,9 @@ defmodule ExFCM.Message do
   defstruct to: "", notification: nil, data: nil
 
   @url Application.get_env(:exfcm, :fcm_url, "")
+
+  @fcm_endpoint "https://fcm.googleapis.com/v1"
+  @messaging_scope "https://www.googleapis.com/auth/firebase.messaging"
   @server_key Application.get_env(:exfcm, :server_key, "")
 
   defmodule Notification do
@@ -76,8 +79,32 @@ defmodule ExFCM.Message do
   @doc """
   Sends synchronous message.
   """
-
   def send(message) do
+    case :persistent_term.get(:exfcm_send_mode, :pending) do
+      :pending ->
+        case Application.get_env(:exfcm, :send_mode, :new) do
+          :new ->
+            :persistent_term.put(:exfcm_send_mode, :new)
+            send_new(message)
+          _ ->
+            :persistent_term.put(:exfcm_send_mode, :old)
+            send_old(message)
+        end
+      :new ->
+        send_new(message)
+        |> case do
+             x = {:ok, %{status_code: 200}} -> x
+             {:ok, x} ->
+               Logger.warning("FCM Error: #{inspect x, pretty: true}")
+               {:ok, x}
+             x -> x
+           end
+      _ ->
+        send_old(message)
+    end
+  end
+
+  def send_old(message) do
     as_json = Poison.encode!(message)
     Logger.debug as_json
     HTTPoison.post(@url,
@@ -85,5 +112,53 @@ defmodule ExFCM.Message do
       [{ "Authorization", "key=" <> @server_key},
        {"Content-Type", "application/json"}])
   end
+
+
+  def send_new(message) do
+    with {:ok, project} <- Goth.Config.get(:project_id),
+         {:ok, goth_token} <- Goth.Token.for_scope({:default, @messaging_scope}) do
+
+        body = %{
+          message: %{
+            notification: %{
+              title: message.notification.title,
+              body: message.notification.body,
+            },
+          }
+        }
+        body = if String.starts_with?(message.to, "/topics/") do
+          body
+          |> put_in([:message, :topic], String.slice(message.to, 8..-1))
+        else
+          body
+          |> put_in([:message, :token], message.to)
+        end
+        body = if (message.data) do
+          data = Enum.map(message.data,
+            fn
+              {k,v} when is_map(v)  or is_list(v) or is_atom(v) or is_boolean(v) -> {k, Poison.encode!(v)}
+              {k,v} -> {k,v}
+            end
+          ) |> Map.new()
+          put_in(body, [:message, :data], data)
+        else
+          body
+        end
+        body = if (message.notification.sound) do
+          body
+          |> put_in([:message, :android], %{notification: %{sound: message.notification.sound}})
+          |> put_in([:message, :apns],  %{payload: %{aps: %{sound: message.notification.sound}}})
+        else
+          body
+        end # end if
+        as_json = Poison.encode!(body)
+        #Logger.warning as_json
+        HTTPoison.post("#{@fcm_endpoint}/projects/#{project}/messages:send",
+          as_json,
+          [{ "Authorization", "Bearer " <> goth_token.token},
+            {"Content-Type", "application/json"}])
+
+    end # end with
+  end # end def
 
 end
